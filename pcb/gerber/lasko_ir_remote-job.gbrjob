@@ -5,7 +5,7 @@
       "Application": "Pcbnew",
       "Version": "7.0.7"
     },
-    "CreationDate": "2023-09-19T19:11:47-04:00"
+    "CreationDate": "2023-09-20T07:21:18-04:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
@@ -24,8 +24,8 @@
   "DesignRules": [
     {
       "Layers": "Outer",
-      "PadToPad": 0.2,
-      "PadToTrack": 0.2,
+      "PadToPad": 0.0,
+      "PadToTrack": 0.0,
       "TrackToTrack": 0.2,
       "MinLineWidth": 0.6,
       "TrackToRegion": 0.5,
@@ -36,11 +36,6 @@
     {
       "Path": "lasko_ir_remote-B_Cu.gbr",
       "FileFunction": "Copper,L2,Bot",
-      "FilePolarity": "Positive"
-    },
-    {
-      "Path": "lasko_ir_remote-B_Silkscreen.gbr",
-      "FileFunction": "Legend,Bot",
       "FilePolarity": "Positive"
     },
     {
