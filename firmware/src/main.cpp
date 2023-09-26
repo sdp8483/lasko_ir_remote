@@ -2,10 +2,12 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <avr/power.h>
 #include <avr/delay.h>
 #include <stdint.h>
 
 #include "clock.h"                                  /* set main clock based on platformio.ini f_cpu value */
+
 /* Define -------------------------------------------------------------------- */
 #define IR_CARRIER_FREQUENCY_HZ     38000   /* Hz, carrier frequency of IR signal */
 #define IR_CARRIER_PERIOD_US        (1000000 / IR_CARRIER_FREQUENCY_HZ)
@@ -24,6 +26,8 @@
 
 #define TCA0_COUNTER_VALUE          int(((F_CPU / IR_CARRIER_FREQUENCY_HZ) / 2) + 0.5)  /* used to generate 38kHz, timer counts to this value */
 
+#define BUTTON_DEBOUNCE_ms          50              /* minimum button delay when held down */
+
 #define BUTTON_0_PIN                (1 << PIN2_bp)  /* button_0 net label from schematic */
 #define BUTTON_1_PIN                (1 << PIN3_bp)  /* button_1 net label from schematic */
 #define BUTTON_2_PIN                (1 << PIN6_bp)  /* button_2 net label from schematic */
@@ -38,30 +42,31 @@
 #define POWER_COMMAND_LEN           12              /* number of bits in power command signal */
 #define OSCILLATE_COMMAND           0b110110000010  /* oscillate command signal */
 #define OSCILLATE_COMMAND_LEN       12              /* number of bits in oscillate command signal */
-#define TIMER_COMMAND               0b110110000011
-#define TIMER_COMMAND_LEN           12
-#define TEMPERATURE_COMMAND         0b110110000100
-#define TEMPERATURE_COMMAND_LEN     12
+#define TIMER_COMMAND               0b110110010000  /* timer command signal */
+#define TIMER_COMMAND_LEN           12              /* number of bits in timer command signal */
+#define TEMPERATURE_COMMAND         0b110110001000  /* temperature command signal */
+#define TEMPERATURE_COMMAND_LEN     12              /* number of bits in temperature command signal */
 
 /* Macro --------------------------------------------------------------------- */
 
 /* Typedef ------------------------------------------------------------------- */
 typedef enum buttons_t {
-    POWER,
-    OSCILLATE,
-    TIMER,
-    TEMPERATURE,
-    NONE
+    POWER       = POWER_BUTTON,
+    OSCILLATE   = OSCILLATE_BUTTON,
+    TIMER       = TIMER_BUTTON,
+    TEMPERATURE = TEMPERATURE_BUTTON,
+    NONE        = 0
 };
 
 /* Globals ------------------------------------------------------------------- */
-buttons_t wake_button;  /* set on button ISR to signal to main code what button was pressed */
+volatile buttons_t wake_button;  /* flag that is set on button ISR to signal to main code what button was pressed */
 
 /* Function Prototypes ------------------------------------------------------- */
 void ir_one_bit(void);
 void ir_zero_bit(void);
 void ir_sleep(void);
 void ir_send(uint16_t cmd, int8_t len);
+void button_wait_for_release(uint8_t button);
 
 /* Main ---------------------------------------------------------------------- */
 int main(void) {
@@ -78,13 +83,14 @@ int main(void) {
 
     /* setup IR pin as out output*/
     PORTA.DIRSET = 1 << PIN1_bp;    /* set PA1 as output, WO1 from TCA0 */
-    PORTA.PIN1CTRL |= 1 << PORT_INVEN_bp;    /* invert PA1 output */
+    // PORTA.PIN1CTRL |= 1 << PORT_INVEN_bp;    /* invert PA1 output */
 
     while(1) {
-        sleep_enable();
-        sei();
-        sleep_cpu();
-        sleep_disable();
+        set_sleep_mode(SLEEP_MODE_IDLE);
+        power_all_disable();    /* power off peripherals */
+        sei();                  /* enable global interrupts */
+        sleep_mode();           /* enable and sleep, wake here */
+        power_all_enable();     /* power on peripherals */
 
         /* disable button interrupts */
         PORTA.PIN2CTRL |= PORT_ISC_INTDISABLE_gc;
@@ -94,46 +100,29 @@ int main(void) {
 
         /* setup timer A */
         TCA0.SINGLE.CTRLESET = TCA_SINGLE_CMD_RESET_gc;
-
-        // TCA0.SINGLE.CMP0 = 263;  /* at 20MHz TCA, 38KHz output */
         TCA0.SINGLE.CMP0 = TCA0_COUNTER_VALUE;
-
         TCA0.SINGLE.CTRLB = (1 << TCA_SINGLE_CMP1EN_bp)     /* enable compare 1, PA1 */
                             | TCA_SINGLE_WGMODE_FRQ_gc;     /* waveform mode, frequency */
-
         TCA0.SINGLE.INTCTRL = 1 << TCA_SINGLE_OVF_bp;      /* enable ISR when counter reaches TOP (CMP0 in waveform frequency mode) */
-
         TCA0.SINGLE.CTRLA = (TCA_SINGLE_CLKSEL_DIV1_gc      /* system clock */
                             | (1 << TCA_SINGLE_ENABLE_bp)); /* enable */
 
         switch (wake_button) {
             case POWER:
                 ir_send(POWER_COMMAND, POWER_COMMAND_LEN);
-
-                while(!(PORTA.IN & POWER_BUTTON)) {
-                    _delay_ms(50);
-                }
+                button_wait_for_release(POWER_BUTTON);
                 break;
             case OSCILLATE:
                 ir_send(OSCILLATE_COMMAND, OSCILLATE_COMMAND_LEN);
-
-                while(!(PORTA.IN & OSCILLATE_BUTTON)) {
-                    _delay_ms(50);
-                }
+                button_wait_for_release(OSCILLATE_BUTTON);
                 break;
             case TIMER:
                 ir_send(TIMER_COMMAND, TIMER_COMMAND_LEN);
-
-                while(!(PORTA.IN & TIMER_BUTTON)) {
-                    _delay_ms(50);
-                }
+                button_wait_for_release(TIMER_BUTTON);
                 break;
             case TEMPERATURE:
                 ir_send(TEMPERATURE_COMMAND, TEMPERATURE_COMMAND_LEN);
-
-                while(!(PORTA.IN & TEMPERATURE_BUTTON)) {
-                    _delay_ms(50);
-                }
+                button_wait_for_release(TEMPERATURE_BUTTON);
                 break;
             default:
                 break;
@@ -151,19 +140,9 @@ int main(void) {
 }
 
 ISR(PORTA_PORT_vect) {
-    if (VPORTA.INTFLAGS & POWER_BUTTON ) {
-        wake_button = POWER;
-    } else if (VPORTA.INTFLAGS & OSCILLATE_BUTTON) {
-        wake_button = OSCILLATE;
-    } else if (VPORTA.INTFLAGS & TIMER_BUTTON) {
-        wake_button = TIMER;
-    } else if (VPORTA.INTFLAGS & TEMPERATURE_BUTTON) {
-        wake_button = TEMPERATURE;
-    } else {
-        wake_button = NONE;
-    }
+    wake_button = (buttons_t) VPORTA.INTFLAGS;
 
-    VPORTA_INTFLAGS |= 0;   /* clear interrupts */
+    VPORTA.INTFLAGS |= 0;   /* clear interrupts */
 }
 
 ISR(TCA0_OVF_vect) {
@@ -172,10 +151,9 @@ ISR(TCA0_OVF_vect) {
 }
 
 void ir_sleep(void) {
-    sleep_enable();
-    sei();
-    sleep_cpu();
-    sleep_disable();
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    sei();          /* enable global interrupts */
+    sleep_mode();   /* enables sleep, sleeps cpu, wakes from sleep and disables */
 }
 
 void ir_one_bit(void) {
@@ -217,5 +195,11 @@ void ir_send(uint16_t cmd, int8_t len) {
         }
 
         _delay_us(IR_DELAY_BETWEEN_REPEATS_US);
+    }
+}
+
+void button_wait_for_release(uint8_t button) {
+    while (!(PORTA.IN & button)) {
+        _delay_ms(BUTTON_DEBOUNCE_ms);
     }
 }
