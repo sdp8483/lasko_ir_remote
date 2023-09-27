@@ -69,22 +69,25 @@ void button_wait_for_release(uint8_t button);
 
 /* Main ---------------------------------------------------------------------- */
 int main(void) {
-    clock_init();                                   /* Set main clock frequency to value set in platformio.ini */
+    clock_init();   /* Set main clock frequency to value set in platformio.ini */
 
     /* setup buttons as inputs */
     PORTA.DIRCLR = (POWER_BUTTON | OSCILLATE_BUTTON | TIMER_BUTTON | TEMPERATURE_BUTTON);
 
-    /* setup button interrupts on low level, enable pullup */
-    PORTA.PIN2CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN3CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN6CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN7CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+    /* setup IR pin PA1 as output, WO1 from TCA0 */
+    PORTA.DIRSET = 1 << PIN1_bp;
 
-    /* setup IR pin as out output*/
-    PORTA.DIRSET = 1 << PIN1_bp;    /* set PA1 as output, WO1 from TCA0 */
-    // PORTA.PIN1CTRL |= 1 << PORT_INVEN_bp;    /* invert PA1 output */
+    /* for low power on unused pin set pullup, disable input buffer */
+    PORTA.PIN0CTRL = ((1 << PORT_PULLUPEN_bp) | PORT_ISC_INPUT_DISABLE_gc);
 
     while(1) {
+        /* setup button interrupts on low level, enable pullup */
+        PORTA.PIN2CTRL = (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN3CTRL = (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN6CTRL = (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN7CTRL = (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+
+        /* sleep until button press */
         set_sleep_mode(SLEEP_MODE_PWR_DOWN);
         sei();                  /* enable global interrupts */
         sleep_mode();           /* enable and sleep, wake here */
@@ -100,10 +103,11 @@ int main(void) {
         TCA0.SINGLE.CMP0 = TCA0_COUNTER_VALUE;
         TCA0.SINGLE.CTRLB = (1 << TCA_SINGLE_CMP1EN_bp)     /* enable compare 1, PA1 */
                             | TCA_SINGLE_WGMODE_FRQ_gc;     /* waveform mode, frequency */
-        TCA0.SINGLE.INTCTRL = 1 << TCA_SINGLE_OVF_bp;      /* enable ISR when counter reaches TOP (CMP0 in waveform frequency mode) */
+        TCA0.SINGLE.INTCTRL = 1 << TCA_SINGLE_OVF_bp;       /* enable ISR when counter reaches TOP (CMP0 in waveform frequency mode) */
         TCA0.SINGLE.CTRLA = (TCA_SINGLE_CLKSEL_DIV1_gc      /* system clock */
                             | (1 << TCA_SINGLE_ENABLE_bp)); /* enable */
 
+        /* send out IR signal based on button pressed */
         switch (wake_button) {
             case POWER:
                 ir_send(POWER_COMMAND, POWER_COMMAND_LEN);
@@ -127,19 +131,13 @@ int main(void) {
 
         /* disable timer A */
         TCA0.SINGLE.CTRLA = (0 << TCA_SINGLE_ENABLE_bp);
-
-        /* enable button interrupts */
-        PORTA.PIN2CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN3CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN6CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN7CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
     }
 }
 
 ISR(PORTA_PORT_vect) {
+    cli();  /* disable interrupts */
     wake_button = (buttons_t) VPORTA.INTFLAGS;
-
-    VPORTA.INTFLAGS = wake_button;   /* clear interrupt */
+    VPORTA.INTFLAGS = 0xff;   /* clear all button interrupts */
 }
 
 ISR(TCA0_OVF_vect) {
