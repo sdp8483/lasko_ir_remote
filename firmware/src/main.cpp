@@ -2,7 +2,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
-#include <avr/power.h>
 #include <avr/delay.h>
 #include <stdint.h>
 
@@ -75,22 +74,20 @@ int main(void) {
     /* setup buttons as inputs */
     PORTA.DIRCLR = (POWER_BUTTON | OSCILLATE_BUTTON | TIMER_BUTTON | TEMPERATURE_BUTTON);
 
-    /* setup button interrupts on falling edge, enable pullup */
-    PORTA.PIN2CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN3CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN6CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-    PORTA.PIN7CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
+    /* setup button interrupts on low level, enable pullup */
+    PORTA.PIN2CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+    PORTA.PIN3CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+    PORTA.PIN6CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+    PORTA.PIN7CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
 
     /* setup IR pin as out output*/
     PORTA.DIRSET = 1 << PIN1_bp;    /* set PA1 as output, WO1 from TCA0 */
     // PORTA.PIN1CTRL |= 1 << PORT_INVEN_bp;    /* invert PA1 output */
 
     while(1) {
-        set_sleep_mode(SLEEP_MODE_IDLE);
-        power_all_disable();    /* power off peripherals */
+        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
         sei();                  /* enable global interrupts */
         sleep_mode();           /* enable and sleep, wake here */
-        power_all_enable();     /* power on peripherals */
 
         /* disable button interrupts */
         PORTA.PIN2CTRL |= PORT_ISC_INTDISABLE_gc;
@@ -132,17 +129,17 @@ int main(void) {
         TCA0.SINGLE.CTRLA = (0 << TCA_SINGLE_ENABLE_bp);
 
         /* enable button interrupts */
-        PORTA.PIN2CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN3CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN6CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
-        PORTA.PIN7CTRL |= (PORT_ISC_FALLING_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN2CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN3CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN6CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
+        PORTA.PIN7CTRL |= (PORT_ISC_LEVEL_gc | (1 << PORT_PULLUPEN_bp));
     }
 }
 
 ISR(PORTA_PORT_vect) {
     wake_button = (buttons_t) VPORTA.INTFLAGS;
 
-    VPORTA.INTFLAGS |= 0;   /* clear interrupts */
+    VPORTA.INTFLAGS = wake_button;   /* clear interrupt */
 }
 
 ISR(TCA0_OVF_vect) {
