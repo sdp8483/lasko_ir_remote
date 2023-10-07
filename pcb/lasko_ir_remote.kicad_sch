@@ -1469,7 +1469,7 @@
     (property "Reference" "R2" (at 216.662 54.61 90)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Value" "100" (at 214.63 54.61 90)
+    (property "Value" "10" (at 214.63 54.61 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Footprint" "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder" (at 212.852 54.61 90)
