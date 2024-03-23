@@ -61,3 +61,5 @@ For the enclosure I went with a 3D printed three piece design. The enclosure is 
 This was an easy project to make with the most difficult part being finding the correct wavelength of IR LED to use. I initially used a 850nm IR LED but I found that while the signal would be received by the fan, the remote had to be pointing directly at the fan and I had to be standing within arms reach for it to work. The 940nm IR LED was found to work much better.
 
 The final hardest part of this project was that I completed this PCB and firmware about 6 months ago and only now have gotten around to writing this documentation up. I have forgotten much and have had to gloss over many of the details in this documentation.
+
+Blog Post: https://samueldperry.com/2024/03/23/lasko-pedestal-fan-remote/
